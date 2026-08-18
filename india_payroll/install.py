@@ -611,6 +611,44 @@ def get_custom_fields():
 				),
 			},
 		],
+		# The offer's CTC break-up is evaluated through a prospective Salary Structure
+		# Assignment, and hrms carries any Custom Field the two doctypes share onto it. These
+		# fields therefore drive the employer's EPF cost in the offered CTC, using the same
+		# fieldnames (and wording) as the assignment they will eventually seed.
+		"Job Offer": [
+			{
+				"fieldname": "india_payroll_epf_section",
+				"label": "Employee Provident Fund",
+				"fieldtype": "Section Break",
+				"insert_after": "ctc",
+				"depends_on": "eval:doc.salary_structure",
+			},
+			{
+				"fieldname": "epf_applicable",
+				"label": "EPF Applicable",
+				"fieldtype": "Check",
+				"insert_after": "india_payroll_epf_section",
+				"description": (
+					"Opt this candidate into EPF for the offered CTC. The system "
+					"defers to this flag rather than enforcing a wage-based eligibility rule."
+				),
+			},
+			{
+				"fieldname": "epf_section_coulmn_break",
+				"fieldtype": "Column Break",
+				"insert_after": "epf_applicable",
+			},
+			{
+				"fieldname": "contribute_on_actual_pf_wage",
+				"label": "Contribute on Actual PF Wage",
+				"fieldtype": "Check",
+				"insert_after": "epf_applicable",
+				"description": (
+					"If checked, employee + employer EPF contributions are computed on the "
+					"actual PF wage when it exceeds ₹15,000. EPS and EDLI remain capped by law."
+				),
+			},
+		],
 	}
 
 
