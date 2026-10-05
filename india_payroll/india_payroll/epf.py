@@ -209,6 +209,32 @@ def cap_pf_wage(pf_wage, ceilings) -> float:
 	return flt(sum(min(flt(pf_wage), ceiling) * share for ceiling, share in ceilings), 2)
 
 
+def get_employer_epf_split(pf_wage, ceilings, *, contribute_on_actual=False) -> frappe._dict:
+	"""The employer's EPF-scheme cost for one period's PF wage, per EPFO statute.
+
+	The one implementation, shared by CTC, the slip and the EPF register / ECR.
+	Only EPF follows ``contribute_on_actual``; EPS, EDLI and admin stay capped.
+	EPS is carved out of the employer's 12%, never added to it.
+	"""
+	pf_wage = flt(pf_wage)
+	capped = cap_pf_wage(pf_wage, ceilings)
+	epf_wages = pf_wage if contribute_on_actual else capped
+	eps_wages = get_eps_wage(pf_wage, ceilings)
+
+	eps = _epfo_round(eps_wages * EPS_RATE)
+	employer_total = _epfo_round(epf_wages * EPF_EMPLOYER_RATE)
+
+	return frappe._dict(
+		epf_wages=epf_wages,
+		eps_wages=eps_wages,
+		edli_wages=capped,
+		employer_epf=max(0, employer_total - eps),
+		eps=eps,
+		edli=_epfo_round(capped * EDLI_RATE),
+		admin_charges=_epfo_round(capped * EPF_ADMIN_RATE),
+	)
+
+
 def get_eps_wage(pf_wage, ceilings) -> float:
 	"""EPS wage for the period.
 
@@ -235,18 +261,26 @@ def _required_components_exist() -> bool:
 def _is_pf_wage_row(e) -> bool:
 	# Additional Salary earnings (bonuses/arrears) never count, even when the
 	# component reads as Basic/DA.
-	return not e.get("additional_salary") and is_pf_wage_component(e.salary_component)
+	return not e.get("additional_salary") and is_pf_wage_component(e.get("salary_component"))
 
 
 def _has_pf_wage_component(doc) -> bool:
 	return any(_is_pf_wage_row(e) for e in doc.earnings)
 
 
+def get_pf_wage(earnings, field="amount") -> float:
+	"""PF wage is the Basic and Dearness Allowance earnings.
+
+	``amount`` is the wage paid, ``default_amount`` the full cycle with no LOP.
+	"""
+	return sum(flt(e.get(field)) for e in earnings if _is_pf_wage_row(e))
+
+
 def _compute_pf_wage(doc) -> float:
 	# `amount`, not `default_amount`: for components that depend on payment days
 	# this is the LOP-prorated wage actually paid, which is what the EPF
 	# register and the ECR report as EPF wages.
-	return sum(flt(e.amount) for e in doc.earnings if _is_pf_wage_row(e))
+	return get_pf_wage(doc.earnings)
 
 
 def _compute_vpf(doc, epf_base: float, *, vpf_mode=None, vpf_percentage=None, vpf_amount=None) -> float:
