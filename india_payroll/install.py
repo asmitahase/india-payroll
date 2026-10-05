@@ -1,6 +1,8 @@
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
+from india_payroll.india_payroll.epf import EPF_WAGE_CEILING
+from india_payroll.india_payroll.esi import ESI_WAGE_CEILING, ESI_WAGE_CEILING_DISABILITY
 from india_payroll.india_payroll.tax_exemption_setup import setup_tax_exemption_categories
 from india_payroll.sidebar import add_sidebar_links
 from india_payroll.telemetry import record_install
@@ -611,16 +613,12 @@ def get_custom_fields():
 				),
 			},
 		],
-		# The offer's CTC break-up is evaluated through a prospective Salary Structure
-		# Assignment, and hrms carries any Custom Field the two doctypes share onto it. These
-		# fields therefore drive the employer's EPF cost in the offered CTC, using the same
-		# fieldnames (and wording) as the assignment they will eventually seed.
 		"Job Offer": [
 			{
 				"fieldname": "india_payroll_epf_section",
 				"label": "Employee Provident Fund",
 				"fieldtype": "Section Break",
-				"insert_after": "ctc",
+				"insert_after": "gross",
 				"depends_on": "eval:doc.salary_structure",
 			},
 			{
@@ -628,6 +626,7 @@ def get_custom_fields():
 				"label": "EPF Applicable",
 				"fieldtype": "Check",
 				"insert_after": "india_payroll_epf_section",
+				"default": "1",
 				"description": (
 					"Opt this candidate into EPF for the offered CTC. The system "
 					"defers to this flag rather than enforcing a wage-based eligibility rule."
@@ -642,10 +641,33 @@ def get_custom_fields():
 				"fieldname": "contribute_on_actual_pf_wage",
 				"label": "Contribute on Actual PF Wage",
 				"fieldtype": "Check",
-				"insert_after": "epf_applicable",
+				"insert_after": "epf_section_coulmn_break",
+				"depends_on": f"eval:doc.epf_applicable && doc.gross > {EPF_WAGE_CEILING}",
 				"description": (
-					"If checked, employee + employer EPF contributions are computed on the "
-					"actual PF wage when it exceeds ₹15,000. EPS and EDLI remain capped by law."
+					f"If checked, employee + employer EPF contributions are computed on the "
+					f"actual PF wage when it exceeds ₹{EPF_WAGE_CEILING:,}. EPS and EDLI remain "
+					"capped by law."
+				),
+			},
+			{
+				"fieldname": "india_payroll_esi_section",
+				"label": "Employee State Insurance",
+				"fieldtype": "Section Break",
+				"insert_after": "contribute_on_actual_pf_wage",
+				"depends_on": "eval:doc.salary_structure",
+			},
+			{
+				"fieldname": "is_person_with_disability",
+				"label": "Person with Disability",
+				"fieldtype": "Check",
+				"insert_after": "india_payroll_esi_section",
+				"depends_on": (
+					f"eval:doc.gross > {ESI_WAGE_CEILING} && doc.gross <= {ESI_WAGE_CEILING_DISABILITY}"
+				),
+				"description": (
+					f"ESIC wage ceiling is ₹{ESI_WAGE_CEILING_DISABILITY:,} instead of "
+					f"₹{ESI_WAGE_CEILING:,} for persons with disability, so the employer's "
+					"3.25% share applies to this offer."
 				),
 			},
 		],
