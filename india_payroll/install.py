@@ -1,7 +1,11 @@
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
-from india_payroll.india_payroll.epf import EPF_WAGE_CEILING
+from india_payroll.india_payroll.epf import (
+	EPF_PREVIOUS_WAGE_CEILING,
+	EPF_WAGE_CEILING,
+	EPF_WAGE_CEILING_REVISED_ON,
+)
 from india_payroll.india_payroll.esi import ESI_WAGE_CEILING, ESI_WAGE_CEILING_DISABILITY
 from india_payroll.india_payroll.tax_exemption_setup import setup_tax_exemption_categories
 from india_payroll.sidebar import add_sidebar_links
@@ -642,11 +646,17 @@ def get_custom_fields():
 				"label": "Contribute on Actual PF Wage",
 				"fieldtype": "Check",
 				"insert_after": "epf_section_coulmn_break",
-				"depends_on": f"eval:doc.epf_applicable && doc.gross > {EPF_WAGE_CEILING}",
+				"depends_on": (
+					"eval:doc.epf_applicable && doc.gross > "
+					"((doc.date_of_joining || doc.offer_date || frappe.datetime.get_today()) "
+					f'< "{EPF_WAGE_CEILING_REVISED_ON}" ? {EPF_PREVIOUS_WAGE_CEILING} : {EPF_WAGE_CEILING})'
+				),
 				"description": (
-					f"If checked, employee + employer EPF contributions are computed on the "
-					f"actual PF wage when it exceeds ₹{EPF_WAGE_CEILING:,}. EPS and EDLI remain "
-					"capped by law."
+					"If checked, employee + employer EPF contributions are computed on the "
+					"actual PF wage when it exceeds the EPF wage ceiling in force on the date of "
+					f"joining (₹{EPF_PREVIOUS_WAGE_CEILING:,} before "
+					f"{EPF_WAGE_CEILING_REVISED_ON:%d %b %Y}, ₹{EPF_WAGE_CEILING:,} from then on). "
+					"EPS and EDLI remain capped by law."
 				),
 			},
 			{
@@ -661,9 +671,7 @@ def get_custom_fields():
 				"label": "Person with Disability",
 				"fieldtype": "Check",
 				"insert_after": "india_payroll_esi_section",
-				"depends_on": (
-					f"eval:doc.gross > {ESI_WAGE_CEILING} && doc.gross <= {ESI_WAGE_CEILING_DISABILITY}"
-				),
+				"depends_on": f"eval:doc.gross > {ESI_WAGE_CEILING}",
 				"description": (
 					f"ESIC wage ceiling is ₹{ESI_WAGE_CEILING_DISABILITY:,} instead of "
 					f"₹{ESI_WAGE_CEILING:,} for persons with disability, so the employer's "
