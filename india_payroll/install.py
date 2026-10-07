@@ -1,5 +1,6 @@
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+from frappe.custom.doctype.property_setter.property_setter import make_property_setter
 
 from india_payroll.india_payroll.epf import (
 	EPF_PREVIOUS_WAGE_CEILING,
@@ -671,7 +672,9 @@ def get_custom_fields():
 				"label": "Person with Disability",
 				"fieldtype": "Check",
 				"insert_after": "india_payroll_esi_section",
-				"depends_on": f"eval:doc.gross > {ESI_WAGE_CEILING}",
+				"depends_on": (
+					f"eval:doc.gross > {ESI_WAGE_CEILING} && doc.gross <= {ESI_WAGE_CEILING_DISABILITY}"
+				),
 				"description": (
 					f"ESIC wage ceiling is ₹{ESI_WAGE_CEILING_DISABILITY:,} instead of "
 					f"₹{ESI_WAGE_CEILING:,} for persons with disability, so the employer's "
@@ -686,6 +689,7 @@ def after_install():
 	from india_payroll.patches.v1_0.set_employment_state_from_company_address import execute
 
 	create_custom_fields(get_custom_fields())
+	set_job_offer_field_properties()
 	create_professional_tax_component()
 	create_esi_components()
 	create_lwf_component()
@@ -703,6 +707,11 @@ def after_install():
 def after_migrate():
 	create_custom_fields(get_custom_fields())
 	add_sidebar_links()
+	set_job_offer_field_properties()
+
+
+def set_job_offer_field_properties():
+	make_property_setter("Job Offer", "contribute_on_actual_pf_wage", "show_description_on_click", 1, "Check")
 
 
 def create_professional_tax_component():
