@@ -10,8 +10,9 @@ from frappe.utils import date_diff, flt, getdate, nowdate
 from india_payroll.india_payroll.company_settings import is_statutory_enabled
 from india_payroll.india_payroll.utils import get_slip_ssa_values
 
-# Employer EPF/EPS/EDLI/Admin are "Employer Contribution" components: they reach CTC,
-# and appear on the slip for information only -- they never reduce net pay.
+# Employee deductions (reduce net pay).  Employer EPF/EPS/EDLI/Admin are
+# components of type "Employer Contribution", computed by
+# ``get_employer_contributions`` for both the slip and CTC.
 EPF_EMPLOYEE_COMPONENT = "Provident Fund"
 VPF_COMPONENT = "Voluntary Provident Fund"
 
@@ -22,12 +23,7 @@ EPS_COMPONENT = "Employer Pension Scheme"
 EDLI_COMPONENT = "Employees Deposit Linked Insurance"
 EPF_ADMIN_COMPONENT = "EPF Admin Charges"
 
-EPF_EMPLOYER_COMPONENTS = (
-	EPF_EMPLOYER_COMPONENT,
-	EPS_COMPONENT,
-	EDLI_COMPONENT,
-	EPF_ADMIN_COMPONENT,
-)
+EPF_EMPLOYER_COMPONENTS = (EPF_EMPLOYER_COMPONENT, EPS_COMPONENT, EDLI_COMPONENT, EPF_ADMIN_COMPONENT)
 
 # --- Statutory constants --------------------------------------------------
 EPF_WAGE_CEILING = 25_000  # PF / EPS / EDLI statutory ceiling (S.O. 5109(E))
@@ -43,13 +39,16 @@ PF_WAGE_COMPONENT_PATTERNS = (
 	r"\bbasic\b",  # Basic, Basic Salary, Basic Pay, Basic Wages, Basic + DA
 	r"\bdearness\b",  # Dearness Allowance, Dearness Pay
 	r"\bda\b",  # DA, Basic + DA
+	r"\bretaining\b",  # Retaining Allowance
+	r"\bra\b",  # RA
 )
 
 _PF_WAGE_COMPONENT_RE = re.compile("|".join(PF_WAGE_COMPONENT_PATTERNS))
 
 
 def is_pf_wage_component(salary_component: str | None) -> bool:
-	"""True when a Salary Component name reads as Basic or Dearness Allowance.
+	"""True when a Salary Component name reads as Basic, Dearness Allowance or
+	Retaining Allowance — the wage heads EPF Act s.6 levies contributions on.
 
 	Heuristic by design: there is no per-component PF flag, so a company that
 	names its basic component something unrecognisable (e.g. "Fixed Pay") will
@@ -70,11 +69,11 @@ def apply_epf(doc, method=None) -> None:
 	  • Employee contribution (12 %)   → deductions
 	  • VPF top-up (optional)          → deductions
 
-	Employer contributions (EPF / EPS / EDLI / Admin) are written by
-	``employer_contributions`` -- not by this hook.
+	Employer contributions (EPF / EPS / EDLI / Admin) come from
+	``get_employer_contributions``, not this hook.
 
-	Contributions are computed on PF wage — the Basic and Dearness Allowance
-	earnings on the slip only (see ``_compute_pf_wage``) — never on gross pay.
+	Contributions are computed on PF wage — the Basic, Dearness Allowance and
+	Retaining Allowance earnings on the slip only (see ``_compute_pf_wage``) — never on gross pay.
 
 	Gated by a single `epf_applicable` flag on the Salary Structure Assignment.
 	All employees are assumed to be post-1 Sept 2014 EPF members.
@@ -113,9 +112,10 @@ def apply_epf(doc, method=None) -> None:
 		if not _has_pf_wage_component(doc):
 			frappe.msgprint(
 				frappe._(
-					"No Basic or Dearness Allowance earning was found on this Salary Slip, "
-					"so no EPF has been deducted. EPF applies only to Basic and Dearness "
-					"Allowance; rename the component accordingly if it is PF-eligible."
+					"No Basic, Dearness Allowance or Retaining Allowance earning was found on "
+					"this Salary Slip, so no EPF has been deducted. EPF applies only to Basic, "
+					"Dearness Allowance and Retaining Allowance; rename the component "
+					"accordingly if it is PF-eligible."
 				),
 				indicator="orange",
 				alert=True,
@@ -244,12 +244,13 @@ def get_employer_epf_split(pf_wage, ceilings, *, contribute_on_actual=False) -> 
 def get_employer_contributions(earnings, config, *, paid_field="amount", company=None) -> dict:
 	"""The employer's EPF-scheme cost, keyed by salary component.
 
-	Returns zeros rather than omitting them, so a stale row gets cleared.
+	Returns nothing when EPF does not apply, so the Salary Structure's own rows
+	stand. Otherwise returns zeros rather than omitting them, so a stale row gets cleared.
 	"""
-	zero = dict.fromkeys(EPF_EMPLOYER_COMPONENTS, 0.0)
-
 	if not is_statutory_enabled("epf", company) or not config.get("epf_applicable"):
-		return zero
+		return {}
+
+	zero = dict.fromkeys(EPF_EMPLOYER_COMPONENTS, 0.0)
 
 	wage = get_pf_wage(earnings, paid_field)
 	if wage <= 0:
@@ -273,7 +274,7 @@ def _get_config_ceilings(config) -> list[tuple[float, float]]:
 	return get_epf_wage_ceilings(
 		config.get("start_date") or config.get("from_date") or nowdate(),
 		config.get("end_date"),
-		joining_date=config.get("date_of_joining"),
+		joining_date=config.get("joining_date"),
 		relieving_date=config.get("relieving_date"),
 	)
 
@@ -303,7 +304,7 @@ def _required_components_exist() -> bool:
 
 def _is_pf_wage_row(e) -> bool:
 	# Additional Salary earnings (bonuses/arrears) never count, even when the
-	# component reads as Basic/DA.
+	# component reads as Basic/DA/RA.
 	return not e.get("additional_salary") and is_pf_wage_component(e.get("salary_component"))
 
 
@@ -312,7 +313,7 @@ def _has_pf_wage_component(doc) -> bool:
 
 
 def get_pf_wage(earnings, field="amount") -> float:
-	"""PF wage is the Basic and Dearness Allowance earnings.
+	"""PF wage is the Basic, Dearness Allowance and Retaining Allowance earnings.
 
 	``amount`` is the wage paid, ``default_amount`` the full cycle with no LOP.
 	"""
