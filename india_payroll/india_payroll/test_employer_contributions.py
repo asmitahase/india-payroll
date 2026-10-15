@@ -194,7 +194,7 @@ class TestEmployerContributions(HRMSTestSuite):
 		self.assertNotIn(EPS_COMPONENT, amounts)
 		self.assertEqual(amounts[EPF_EMPLOYER_COMPONENT], 1_800)
 
-	def test_contribute_on_actual_raises_only_employer_epf(self):
+	def test_contribute_on_actual_raises_employer_epf_and_admin(self):
 		ssa = self._make_epf_assignment(
 			"ctc_epf_actual@indiapayroll.com",
 			30_000.0,
@@ -206,7 +206,7 @@ class TestEmployerContributions(HRMSTestSuite):
 
 		self.assertEqual(amounts[EPF_EMPLOYER_COMPONENT], 3_600)
 		self.assertEqual(amounts[EDLI_COMPONENT], 125)
-		self.assertEqual(amounts[EPF_ADMIN_COMPONENT], 125)
+		self.assertEqual(amounts[EPF_ADMIN_COMPONENT], 150)
 
 	def test_computed_epf_overrides_a_flat_structure_row(self):
 		ssa = self._make_assignment(

@@ -219,7 +219,7 @@ def get_employer_epf_split(pf_wage, ceilings, *, contribute_on_actual=False) -> 
 	"""The employer's EPF-scheme cost for one period's PF wage, per EPFO statute.
 
 	The one implementation, shared by CTC, the slip and the EPF register / ECR.
-	Only EPF follows ``contribute_on_actual``; EPS, EDLI and admin stay capped.
+	Only EPF and admin follow ``contribute_on_actual``; EPS and EDLI stay capped.
 	EPS is carved out of the employer's 12%, never added to it.
 	"""
 	pf_wage = flt(pf_wage)
@@ -237,7 +237,7 @@ def get_employer_epf_split(pf_wage, ceilings, *, contribute_on_actual=False) -> 
 		employer_epf=max(0, employer_total - eps),
 		eps=eps,
 		edli=_epfo_round(capped * EDLI_RATE),
-		admin_charges=_epfo_round(capped * EPF_ADMIN_RATE),
+		admin_charges=_epfo_round(epf_wages * EPF_ADMIN_RATE),
 	)
 
 
